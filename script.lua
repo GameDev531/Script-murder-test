@@ -49,6 +49,7 @@ local estado = {
     GodMode = CONFIG.GodModeEnabled,
     FOV = CONFIG.DefaultFOV,
     Suave = CONFIG.AimSmoothness > 0,
+    MostrarNomes = true,  -- Adicionado para o toggle de nomes
 }
 
 -- ============================
@@ -135,13 +136,8 @@ end
 -- ============================
 -- AIMBOT (RODANDO EM HEARTBEAT)
 -- ============================
-local aimbotRunning = false
 RunService.Heartbeat:Connect(function()
-    if not estado.Aimbot then
-        aimbotRunning = false
-        return
-    end
-    aimbotRunning = true
+    if not estado.Aimbot then return end
 
     local target = getAimbotTarget()
     if not target then return end
@@ -168,21 +164,21 @@ end)
 -- ============================
 -- GOD MODE (IMUNE A FACADA)
 -- ============================
-Humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-    if estado.GodMode and Humanoid.Health < 100 then
-        Humanoid.Health = 100
-    end
-end)
+local function connectGodMode(humanoid)
+    humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+        if estado.GodMode and humanoid.Health < 100 then
+            humanoid.Health = 100
+        end
+    end)
+end
+
+connectGodMode(Humanoid)
 
 -- Reconecta o God Mode se o personagem renascer
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
-    Humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-        if estado.GodMode and Humanoid.Health < 100 then
-            Humanoid.Health = 100
-        end
-    end)
+    connectGodMode(Humanoid)
 end)
 
 -- ============================
@@ -250,10 +246,14 @@ RunService.RenderStepped:Connect(function()
                 d.box.Color = cor
                 d.box.Visible = true
 
-                d.label.Text = texto .. " | " .. math.floor(dist) .. "m"
-                d.label.Position = Vector2.new(pos.X, pos.Y - boxSize.Y / 2 - 22)
-                d.label.Color = cor
-                d.label.Visible = true
+                if estado.MostrarNomes then
+                    d.label.Text = texto .. " | " .. math.floor(dist) .. "m"
+                    d.label.Position = Vector2.new(pos.X, pos.Y - boxSize.Y / 2 - 22)
+                    d.label.Color = cor
+                    d.label.Visible = true
+                else
+                    d.label.Visible = false
+                end
             else
                 d.box.Visible = false
                 d.label.Visible = false
@@ -370,7 +370,7 @@ contentCorner.CornerRadius = UDim.new(0, 6)
 contentCorner.Parent = contentContainer
 
 -- Função para criar toggles dentro das abas
-local function criarToggle(container, texto, posY, variavelEstado, corFundo)
+local function criarToggle(container, texto, posY, callback, corFundo)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -20, 0, 40)
     frame.Position = UDim2.new(0, 10, 0, posY)
@@ -393,9 +393,9 @@ local function criarToggle(container, texto, posY, variavelEstado, corFundo)
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 80, 0, 28)
     toggleBtn.Position = UDim2.new(0.85, -80, 0.5, -14)
-    toggleBtn.BackgroundColor3 = variavelEstado and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(200, 50, 50)
+    toggleBtn.BackgroundColor3 = callback() and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(200, 50, 50)
     toggleBtn.BorderSizePixel = 0
-    toggleBtn.Text = variavelEstado and "✅ ON" or "❌ OFF"
+    toggleBtn.Text = callback() and "✅ ON" or "❌ OFF"
     toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     toggleBtn.TextSize = 13
     toggleBtn.Font = Enum.Font.GothamBold
@@ -406,16 +406,13 @@ local function criarToggle(container, texto, posY, variavelEstado, corFundo)
     toggleCorner.Parent = toggleBtn
 
     toggleBtn.MouseButton1Click:Connect(function()
-        variavelEstado = not variavelEstado
-        toggleBtn.BackgroundColor3 = variavelEstado and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(200, 50, 50)
-        toggleBtn.Text = variavelEstado and "✅ ON" or "❌ OFF"
-        -- Atualiza o estado global
-        if container.Name == "ESP" then estado.ESP = variavelEstado end
-        if container.Name == "Aimbot" then estado.Aimbot = variavelEstado end
-        if container.Name == "Combat" then estado.GodMode = variavelEstado end
+        local newState = not callback()
+        toggleBtn.BackgroundColor3 = newState and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(200, 50, 50)
+        toggleBtn.Text = newState and "✅ ON" or "❌ OFF"
+        callback(newState)
     end)
 
-    return toggleBtn, variavelEstado
+    return toggleBtn
 end
 
 -- Criar Slider para FOV
@@ -492,7 +489,7 @@ local function criarSlider(container, texto, posY, min, max, valorInicial, callb
         end
     end)
 
-    game:GetService("RunService").RenderStepped:Connect(function()
+    RunService.RenderStepped:Connect(function()
         if dragging then
             local mousePos = UserInputService:GetMouseLocation().X
             local sliderAbsPos = slider.AbsolutePosition.X
@@ -524,8 +521,15 @@ espContainer.ScrollBarThickness = 4
 espContainer.Name = "ESP"
 espContainer.Parent = contentContainer
 
-criarToggle(espContainer, "Ativar ESP", 10, estado.ESP, Color3.fromRGB(60, 40, 40))
-criarToggle(espContainer, "Mostrar Nomes", 60, true, Color3.fromRGB(40, 40, 60))
+criarToggle(espContainer, "Ativar ESP", 10, function(val)
+    if val ~= nil then estado.ESP = val end
+    return estado.ESP
+end, Color3.fromRGB(60, 40, 40))
+
+criarToggle(espContainer, "Mostrar Nomes", 60, function(val)
+    if val ~= nil then estado.MostrarNomes = val end
+    return estado.MostrarNomes
+end, Color3.fromRGB(40, 40, 60))
 
 -- ABA AIMBOT
 local aimbotContainer = Instance.new("ScrollingFrame")
@@ -538,8 +542,15 @@ aimbotContainer.Name = "Aimbot"
 aimbotContainer.Visible = false
 aimbotContainer.Parent = contentContainer
 
-criarToggle(aimbotContainer, "Ativar Aimbot", 10, estado.Aimbot, Color3.fromRGB(40, 40, 60))
-criarToggle(aimbotContainer, "Mira Suave (Lerp)", 60, estado.Suave, Color3.fromRGB(40, 60, 40))
+criarToggle(aimbotContainer, "Ativar Aimbot", 10, function(val)
+    if val ~= nil then estado.Aimbot = val end
+    return estado.Aimbot
+end, Color3.fromRGB(40, 40, 60))
+
+criarToggle(aimbotContainer, "Mira Suave (Lerp)", 60, function(val)
+    if val ~= nil then estado.Suave = val end
+    return estado.Suave
+end, Color3.fromRGB(40, 60, 40))
 
 criarSlider(aimbotContainer, "FOV (Ângulo)", 110, 30, 360, estado.FOV, function(val)
     estado.FOV = val
@@ -556,7 +567,10 @@ combatContainer.Name = "Combat"
 combatContainer.Visible = false
 combatContainer.Parent = contentContainer
 
-criarToggle(combatContainer, "God Mode (Imune a facada)", 10, estado.GodMode, Color3.fromRGB(40, 40, 60))
+criarToggle(combatContainer, "God Mode (Imune a facada)", 10, function(val)
+    if val ~= nil then estado.GodMode = val end
+    return estado.GodMode
+end, Color3.fromRGB(40, 40, 60))
 
 -- ============================
 -- ABA INFO E RESTANTE DO CÓDIGO
@@ -606,7 +620,7 @@ local function selecionarAba(nome)
     infoContainer.Visible = (nome == "Info")
 
     -- Efeito visual nos botões
-    for _, btn in pairs(tabBar:GetChildren()) do
+    for _, btn in ipairs(tabBar:GetChildren()) do
         if btn:IsA("TextButton") then
             btn.BackgroundColor3 = (btn.Name == nome) and Color3.fromRGB(70, 70, 120) or Color3.fromRGB(40, 40, 60)
             btn.TextColor3 = (btn.Name == nome) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 220)
@@ -633,23 +647,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Fecha menu se clicar fora (opcional)
-UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and menuAberto then
-        local mousePos = UserInputService:GetMouseLocation()
-        local absPos = mainFrame.AbsolutePosition
-        local size = mainFrame.AbsoluteSize
-        if not (mousePos.X >= absPos.X and mousePos.X <= absPos.X + size.X and
-                mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + size.Y) then
-            -- Se clicou fora, não fecha automaticamente para não atrapalhar. Deixe o Insert controlar.
-        end
-    end
-end)
-
 -- ============================
 -- LIMPEZA QUANDO O SCRIPT PARAR
 -- ============================
-game:GetService("Players").LocalPlayer:GetAttribute("_hubCleanup")
 LocalPlayer.CharacterAdded:Connect(function()
     -- Reaplica God Mode se estiver ativo
     task.wait(0.5)

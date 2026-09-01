@@ -27,7 +27,6 @@ local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -37,7 +36,6 @@ local Humanoid = Character:WaitForChild("Humanoid")
 local COR_MURDER = Color3.fromRGB(255, 0, 0)
 local COR_SHERIFF = Color3.fromRGB(0, 100, 255)
 local COR_INOCENTE = Color3.fromRGB(0, 255, 0)
-local COR_BRANCO = Color3.fromRGB(255, 255, 255)
 
 -- Desenhos do ESP
 local desenhos = {}
@@ -49,7 +47,7 @@ local estado = {
     GodMode = CONFIG.GodModeEnabled,
     FOV = CONFIG.DefaultFOV,
     Suave = CONFIG.AimSmoothness > 0,
-    MostrarNomes = true,  -- Adicionado para o toggle de nomes
+    MostrarNomes = true,  -- Novo estado para mostrar/esconder nomes
 }
 
 -- ============================
@@ -106,12 +104,9 @@ local function getAimbotTarget()
                 if root then
                     local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
                     if onScreen then
-                        -- Calcula distância do centro da tela (crosshair)
                         local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
                         local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                        -- Verifica FOV
                         if dist <= estado.FOV then
-                            -- Verifica visibilidade (raycast)
                             local rayParams = RaycastParams.new()
                             rayParams.FilterType = Enum.RaycastFilterType.Blacklist
                             rayParams.FilterDescendantsInstances = {LocalPlayer.Character, char}
@@ -152,11 +147,9 @@ RunService.Heartbeat:Connect(function()
     local newCF = CFrame.lookAt(currentCF.Position, targetPos)
 
     if estado.Suave then
-        -- Mira suave (lerp)
         local lerpCF = currentCF:Lerp(newCF, CONFIG.AimSmoothness)
         Camera.CFrame = lerpCF
     else
-        -- Mira instantânea
         Camera.CFrame = newCF
     end
 end)
@@ -235,7 +228,6 @@ RunService.RenderStepped:Connect(function()
                     texto = "👤 " .. player.Name
                 end
 
-                -- Caixa com tamanho dinâmico baseado na distância
                 local dist = (Camera.CFrame.Position - root.Position).Magnitude
                 local scale = math.clamp(400 / dist, 0.5, 2)
                 local boxSize = Vector2.new(80 * scale, 160 * scale)
@@ -290,6 +282,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SonionMM2Hub"
 screenGui.Parent = PlayerGui
 screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 999  -- Garante que fique na frente de outros elementos
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
@@ -304,7 +297,7 @@ mainFrame.Draggable = true
 mainFrame.Visible = false
 mainFrame.Parent = screenGui
 
--- Arredondamento (usando Corner)
+-- Arredondamento
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = mainFrame
@@ -322,7 +315,7 @@ titulo.TextSize = 18
 titulo.Font = Enum.Font.GothamBold
 titulo.Parent = mainFrame
 
--- Barra de abas (buttons)
+-- Barra de abas
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, 0, 0, 40)
 tabBar.Position = UDim2.new(0, 0, 0, 35)
@@ -369,7 +362,7 @@ local contentCorner = Instance.new("UICorner")
 contentCorner.CornerRadius = UDim.new(0, 6)
 contentCorner.Parent = contentContainer
 
--- Função para criar toggles dentro das abas
+-- Função para criar toggles (agora com callback para ler/definir estado)
 local function criarToggle(container, texto, posY, callback, corFundo)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -20, 0, 40)
@@ -415,7 +408,7 @@ local function criarToggle(container, texto, posY, callback, corFundo)
     return toggleBtn
 end
 
--- Criar Slider para FOV
+-- Função para criar slider
 local function criarSlider(container, texto, posY, min, max, valorInicial, callback)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -20, 0, 45)
@@ -572,9 +565,7 @@ criarToggle(combatContainer, "God Mode (Imune a facada)", 10, function(val)
     return estado.GodMode
 end, Color3.fromRGB(40, 40, 60))
 
--- ============================
--- ABA INFO E RESTANTE DO CÓDIGO
--- ============================
+-- ABA INFO
 local infoContainer = Instance.new("ScrollingFrame")
 infoContainer.Size = UDim2.new(1, 0, 1, 0)
 infoContainer.BackgroundTransparency = 1
@@ -619,7 +610,6 @@ local function selecionarAba(nome)
     combatContainer.Visible = (nome == "Combat")
     infoContainer.Visible = (nome == "Info")
 
-    -- Efeito visual nos botões
     for _, btn in ipairs(tabBar:GetChildren()) do
         if btn:IsA("TextButton") then
             btn.BackgroundColor3 = (btn.Name == nome) and Color3.fromRGB(70, 70, 120) or Color3.fromRGB(40, 40, 60)
@@ -633,17 +623,16 @@ abaAimbot.MouseButton1Click:Connect(function() selecionarAba("Aimbot") end)
 abaCombat.MouseButton1Click:Connect(function() selecionarAba("Combat") end)
 abaInfo.MouseButton1Click:Connect(function() selecionarAba("Info") end)
 
--- Abre a primeira aba por padrão
-selecionarAba("ESP")
+selecionarAba("ESP")  -- Abre a primeira aba por padrão
 
 -- ============================
--- TECLA PARA ABRIR/FECHAR MENU
+-- TECLA PARA ABRIR/FECHAR MENU (SEM BLOQUEIO DE gameProcessed)
 -- ============================
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == CONFIG.MenuKey then
         menuAberto = not menuAberto
         mainFrame.Visible = menuAberto
+        print("Menu visível:", menuAberto)  -- Debug
     end
 end)
 
@@ -651,7 +640,6 @@ end)
 -- LIMPEZA QUANDO O SCRIPT PARAR
 -- ============================
 LocalPlayer.CharacterAdded:Connect(function()
-    -- Reaplica God Mode se estiver ativo
     task.wait(0.5)
     local newChar = LocalPlayer.Character
     if newChar then
